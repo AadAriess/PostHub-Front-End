@@ -28,7 +28,7 @@ const GET_ALL_POSTS_QUERY = gql`
   }
 `;
 
-// 1. GraphQL Query Notifikasi (TETAP SAMA)
+// GraphQL Query untuk Notifikasi
 const GET_NOTIFICATIONS_QUERY = gql`
   query GetMyNotifications {
     myNotifications(limit: 5) {
@@ -211,7 +211,7 @@ function Dashboard() {
 
           {/* Ikon Kontrol (Lonceng & Profil) */}
           <div className="flex gap-4 items-center header-controls relative">
-            {/* 2. Ikon Lonceng Notifikasi */}
+            {/* Ikon Lonceng Notifikasi */}
             <div className="relative">
               <button
                 onClick={() => {
@@ -280,7 +280,31 @@ function Dashboard() {
               )}
             </div>
 
-            {/* 3. Ikon Profil & Dropdown */}
+            <div className="relative">
+              {/* Tombol Buat Postingan Baru */}
+              <button
+                onClick={() => router.push("/create-post")}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-200 flex items-center gap-2"
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M12 4v16m8-8H4"
+                  ></path>
+                </svg>
+                Buat Postingan Baru
+              </button>
+            </div>
+
+            {/* Ikon Profil & Dropdown */}
             <div className="relative">
               <button
                 onClick={() => {
@@ -338,6 +362,7 @@ function Dashboard() {
               {posts.map((post) => (
                 <div
                   key={post.id}
+                  onClick={() => router.push(`/post/${post.id}`)}
                   className="bg-gray-800 p-6 border border-gray-700 rounded-xl shadow-2xl hover:shadow-indigo-500/30 transition duration-300 transform hover:-translate-y-1 cursor-pointer flex flex-col justify-between"
                 >
                   <div>
