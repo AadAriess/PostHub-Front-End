@@ -17,7 +17,7 @@ export interface Comment {
   content: string;
   parentId?: number | null;
   replyToUser?: string | null;
-  createdAt: string;
+  createdAt: Date;
   author: Author;
   replies?: Comment[];
 }
@@ -27,6 +27,7 @@ export interface Post {
   id: string;
   title: string;
   content: string;
+  createdAt: Date;
   author: Author;
   tags: Tag[];
   imagePath?: string | null;
@@ -35,7 +36,6 @@ export interface Post {
 // Tipe untuk entitas Comment
 export interface PostDetail extends Post {
   comments: Comment[];
-  createdAt?: string;
   updatedAt?: string;
 }
 
@@ -47,4 +47,8 @@ export interface GetAllPostsResponse {
 // Tipe untuk entitas Comment
 export interface GetPostWithCommentsResponse {
   getPostWithComments: PostDetail;
+}
+
+export interface FilterPostsResponse {
+  filterPosts: Post[];
 }

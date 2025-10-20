@@ -1,11 +1,12 @@
 import { gql } from "@apollo/client";
-import { useQuery } from "@apollo/client/react";
+import { useQuery, useLazyQuery } from "@apollo/client/react";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import withAuth from "../components/withAuth";
-import { GetAllPostsResponse } from "../types/post";
+import { GetAllPostsResponse, FilterPostsResponse } from "../types/post";
+import FilterBuilder from "../components/FilterBuilder";
+import { FilterGroup } from "../types/filter";
 import { io } from "socket.io-client";
-
 import { GetNotificationsResponse, Notification } from "../types/notifications";
 
 // GraphQL Query untuk semua postingan
@@ -15,6 +16,7 @@ const GET_ALL_POSTS_QUERY = gql`
       id
       title
       content
+      createdAt
       author {
         id
         firstName
@@ -23,6 +25,27 @@ const GET_ALL_POSTS_QUERY = gql`
       tags {
         id
         name
+      }
+    }
+  }
+`;
+
+// GraphQL Query untuk memfilter postingan berdasarkan kriteria tertentu
+const FILTER_POSTS_QUERY = gql`
+  query FilterPosts($filters: FilterGroupInput!) {
+    filterPosts(filters: $filters) {
+      id
+      title
+      content
+      createdAt
+      tags {
+        id
+        name
+      }
+      author {
+        id
+        firstName
+        lastName
       }
     }
   }
@@ -71,13 +94,26 @@ function Dashboard() {
   const [showNotificationDropdown, setShowNotificationDropdown] =
     useState(false);
   const [posts, setPosts] = useState<any[]>([]);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [filters, setFilters] = useState<FilterGroup>({
+    operator: "AND",
+    conditions: [],
+    groups: [],
+  });
 
   // Hook Data Fetching Apollo untuk Postingan
   const {
     data: postsData,
     loading: postsLoading,
     error: postsError,
-  } = useQuery<GetAllPostsResponse>(GET_ALL_POSTS_QUERY, { skip: !isClient });
+  } = useQuery<GetAllPostsResponse>(GET_ALL_POSTS_QUERY, {
+    skip: !isClient,
+    fetchPolicy: "network-only",
+  });
+
+  // Hook Data Fetching Apollo untuk Filter Postingan
+  const [runFilterPosts, { data: filterData }] =
+    useLazyQuery<FilterPostsResponse>(FILTER_POSTS_QUERY);
 
   // Hook Data Fetching Notifikasi
   const {
@@ -96,6 +132,11 @@ function Dashboard() {
       setPosts(postsData.getAllPosts);
     }
   }, [postsData]);
+
+  // Update posts ketika filterData berubah
+  useEffect(() => {
+    if (filterData?.filterPosts) setPosts(filterData.filterPosts);
+  }, [filterData]);
 
   // SOCKET.IO Listener
   useEffect(() => {
@@ -146,6 +187,43 @@ function Dashboard() {
     document.addEventListener("click", handleOutsideClick);
     return () => document.removeEventListener("click", handleOutsideClick);
   }, []);
+
+  // Handler untuk menerapkan filter
+  const applyFilter = async () => {
+    try {
+      console.log("📤 Mengirim filter:", JSON.stringify(filters, null, 2));
+
+      await runFilterPosts({
+        variables: {
+          filters,
+        },
+      });
+
+      setIsFilterOpen(false);
+    } catch (err) {
+      console.error("❌ Gagal memfilter:", err);
+    }
+  };
+
+  // Handler untuk mereset filter
+  const resetFilter = async () => {
+    const emptyFilter: FilterGroup = {
+      operator: "AND",
+      conditions: [],
+      groups: [],
+    };
+    setFilters(emptyFilter);
+    try {
+      const { data } = await runFilterPosts({
+        variables: { filters: emptyFilter },
+      });
+      if (data?.filterPosts) {
+        setPosts(data.filterPosts);
+      }
+    } catch (err) {
+      console.error("❌ Gagal reset filter:", err);
+    }
+  };
 
   // Handler Logout
   const handleLogout = () => {
@@ -208,7 +286,6 @@ function Dashboard() {
               <span className="font-semibold text-indigo-400">{userName}</span>!
             </h2>
           </div>
-
           {/* Ikon Kontrol (Lonceng & Profil) */}
           <div className="flex gap-4 items-center header-controls relative">
             {/* Ikon Lonceng Notifikasi */}
@@ -275,6 +352,49 @@ function Dashboard() {
                     >
                       Lihat Semua Notifikasi
                     </a>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="relative">
+              <button
+                onClick={() => setIsFilterOpen(true)}
+                className="bg-indigo-600 px-4 py-2 rounded-lg text-white hover:bg-indigo-700"
+              >
+                Filter
+              </button>
+
+              {/* Modal Filter */}
+              {isFilterOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                  <div className="bg-gray-900 p-6 rounded-lg shadow-lg w-[700px] max-h-[90vh] overflow-y-auto">
+                    <h2 className="text-xl font-semibold text-white mb-4">
+                      Filter Builder
+                    </h2>
+
+                    <FilterBuilder group={filters} onChange={setFilters} />
+
+                    <div className="mt-6 flex justify-end gap-3">
+                      <button
+                        onClick={() => setIsFilterOpen(false)}
+                        className="px-4 py-2 bg-gray-700 rounded text-gray-200 hover:bg-gray-600"
+                      >
+                        Batal
+                      </button>
+                      <button
+                        onClick={resetFilter}
+                        className="px-4 py-2 bg-gray-700 rounded text-gray-200 hover:bg-gray-600"
+                      >
+                        Reset
+                      </button>
+                      <button
+                        onClick={applyFilter}
+                        className="px-4 py-2 bg-indigo-600 rounded text-white hover:bg-indigo-700"
+                      >
+                        Terapkan Filter
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -372,6 +492,23 @@ function Dashboard() {
                     <p className="text-gray-400 text-sm mb-4 line-clamp-3">
                       {post.content.substring(0, 150)}
                       {post.content.length > 150 ? "..." : ""}
+                    </p>
+
+                    {/* Tanggal postingan */}
+                    <p className="text-xs text-gray-500 mb-3">
+                      Diposting pada{" "}
+                      <span className="text-gray-400 font-medium">
+                        {post.createdAt
+                          ? new Date(post.createdAt).toLocaleDateString(
+                              "id-ID",
+                              {
+                                day: "2-digit",
+                                month: "long",
+                                year: "numeric",
+                              }
+                            )
+                          : "-"}
+                      </span>
                     </p>
                   </div>
 
