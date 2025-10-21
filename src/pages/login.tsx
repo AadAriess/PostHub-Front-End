@@ -23,6 +23,9 @@ const LOGIN_USER_MUTATION = gql`
         id
         email
         firstName
+        lastName
+        address
+        age
       }
     }
   }

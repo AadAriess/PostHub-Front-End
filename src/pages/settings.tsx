@@ -1,7 +1,7 @@
 import { gql } from "@apollo/client";
 import { useMutation } from "@apollo/client/react";
 import { useRouter } from "next/router";
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import withAuth from "../components/withAuth";
 import { UserProfile, UpdateUserResponse, Address } from "../types/user";
 
@@ -94,7 +94,7 @@ function Settings() {
     // Siapkan variabel untuk mutation
     const variables = {
       data: {
-        id: initialProfile?.id,
+        id: Number(initialProfile?.id),
         firstName: formData.firstName,
         lastName: formData.lastName,
         age: Number(formData.age),
