@@ -4,10 +4,32 @@ import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import withAuth from "../components/withAuth";
 import { GetAllPostsResponse, FilterPostsResponse } from "../types/post";
+import { FeedResponse } from "../types/feed";
 import FilterBuilder from "../components/FilterBuilder";
 import { FilterGroup } from "../types/filter";
 import { io } from "socket.io-client";
 import { GetNotificationsResponse, Notification } from "../types/notifications";
+
+// GraphQL Query untuk feed
+const GET_FEED_QUERY = gql`
+  query Feed {
+    feed {
+      id
+      title
+      content
+      createdAt
+      author {
+        id
+        firstName
+        lastName
+      }
+      tags {
+        id
+        name
+      }
+    }
+  }
+`;
 
 // GraphQL Query untuk semua postingan
 const GET_ALL_POSTS_QUERY = gql`
@@ -100,6 +122,7 @@ function Dashboard() {
     conditions: [],
     groups: [],
   });
+  const [isFeedMode, setIsFeedMode] = useState(false);
 
   // Hook Data Fetching Apollo untuk Postingan
   const {
@@ -110,6 +133,31 @@ function Dashboard() {
     skip: !isClient,
     fetchPolicy: "network-only",
   });
+
+  // Hook Data Fetching Apollo untuk Feed
+  const {
+    data: feedData,
+    loading: feedLoading,
+    error: feedError,
+    refetch: refetchFeed,
+  } = useQuery<FeedResponse>(GET_FEED_QUERY, {
+    skip: !isClient,
+    fetchPolicy: "network-only",
+  });
+
+  const loadFeed = async () => {
+    try {
+      const result = await refetchFeed();
+      if (result?.data?.feed) {
+        setPosts(result.data.feed);
+      } else {
+        console.warn("⚠️ Feed kosong atau belum tersedia");
+        setPosts([]);
+      }
+    } catch (err) {
+      console.error("❌ Gagal memuat personalized feed:", err);
+    }
+  };
 
   // Hook Data Fetching Apollo untuk Filter Postingan
   const [runFilterPosts, { data: filterData }] =
@@ -137,6 +185,13 @@ function Dashboard() {
   useEffect(() => {
     if (filterData?.filterPosts) setPosts(filterData.filterPosts);
   }, [filterData]);
+
+  // Update posts ketika feedData berubah
+  useEffect(() => {
+    if (feedData?.feed) {
+      setPosts(feedData.feed);
+    }
+  }, [feedData]);
 
   // SOCKET.IO Listener
   useEffect(() => {
@@ -236,6 +291,20 @@ function Dashboard() {
   const goToSettings = () => {
     setShowProfileDropdown(false);
     router.push("/settings");
+  };
+
+  // Handler Toggle Feed Mode
+  const toggleFeedMode = async () => {
+    if (isFeedMode) {
+      // kembali ke semua postingan
+      if (postsData?.getAllPosts) {
+        setPosts(postsData.getAllPosts);
+      }
+    } else {
+      // ambil feed pribadi
+      await loadFeed();
+    }
+    setIsFeedMode(!isFeedMode);
   };
 
   // Tampilkan Loading/Status Awal
@@ -401,6 +470,28 @@ function Dashboard() {
             </div>
 
             <div className="relative">
+              <button
+                onClick={toggleFeedMode}
+                className={`px-4 py-2 rounded-lg font-semibold transition duration-200 ${
+                  isFeedMode
+                    ? "bg-indigo-600 text-white hover:bg-indigo-700"
+                    : "bg-gray-600 text-gray-200 hover:bg-gray-700"
+                }`}
+              >
+                {isFeedMode ? "🔙 Semua Postingan" : "👥 Feed Saya"}
+              </button>
+            </div>
+
+            <div className="relative">
+              <button
+                onClick={() => router.push("/users")}
+                className="px-4 py-2 bg-indigo-600 text-gray-200 rounded-lg font-semibold hover:bg-indigo-700 transition duration-200"
+              >
+                👤 Semua User
+              </button>
+            </div>
+
+            <div className="relative">
               {/* Tombol Buat Postingan Baru */}
               <button
                 onClick={() => router.push("/create-post")}
@@ -448,6 +539,18 @@ function Dashboard() {
                     className="block px-4 py-2 text-gray-300 hover:bg-gray-700 hover:text-white cursor-pointer transition duration-150"
                   >
                     <span className="mr-2">🛠️</span> Pengaturan
+                  </a>
+                  <a
+                    onClick={() => router.push("/following")}
+                    className="block px-4 py-2 text-gray-300 hover:bg-gray-700 hover:text-white cursor-pointer transition duration-150"
+                  >
+                    <span className="mr-2">👣</span> Following List
+                  </a>
+                  <a
+                    onClick={() => router.push("/followers")}
+                    className="block px-4 py-2 text-gray-300 hover:bg-gray-700 hover:text-white cursor-pointer transition duration-150 border-b border-gray-700"
+                  >
+                    <span className="mr-2">🧍‍♂️</span> Followers List
                   </a>
                   <a
                     onClick={handleLogout}

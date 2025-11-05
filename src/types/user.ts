@@ -22,3 +22,23 @@ export interface UpdateUserResponse {
     address: Address | null;
   };
 }
+
+export interface FollowUserResponse {
+  followUser: boolean;
+}
+
+export interface UnfollowUserResponse {
+  unfollowUser: boolean;
+}
+
+export interface AllUsersResponse {
+  allUsers: UserProfile[];
+}
+
+export interface FollowingListResponse {
+  getFollowingList: UserProfile[];
+}
+
+export interface FollowerListResponse {
+  getFollowerList: UserProfile[];
+}
