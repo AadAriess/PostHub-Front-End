@@ -13,13 +13,14 @@ export interface Tag {
 
 // Tipe untuk entitas Comment
 export interface Comment {
-  id: string;
+  id: number;
   content: string;
   parentId?: number | null;
   replyToUser?: string | null;
   createdAt: Date;
   author: Author;
   replies?: Comment[];
+  postId?: number;
 }
 
 // Tipe untuk entitas Post

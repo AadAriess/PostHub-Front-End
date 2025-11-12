@@ -7,8 +7,9 @@ import { GetAllPostsResponse, FilterPostsResponse } from "../types/post";
 import { FeedResponse } from "../types/feed";
 import FilterBuilder from "../components/FilterBuilder";
 import { FilterGroup } from "../types/filter";
-import { io } from "socket.io-client";
 import { GetNotificationsResponse, Notification } from "../types/notifications";
+import { useSocket } from "../context/socketContext";
+import { Post } from "../types/post";
 
 // GraphQL Query untuk feed
 const GET_FEED_QUERY = gql`
@@ -124,6 +125,10 @@ function Dashboard() {
   });
   const [isFeedMode, setIsFeedMode] = useState(false);
 
+  // Search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+
   // Hook Data Fetching Apollo untuk Postingan
   const {
     data: postsData,
@@ -193,24 +198,63 @@ function Dashboard() {
     }
   }, [feedData]);
 
+  // Ambil socket dari context
+  const socket = useSocket();
+
   // SOCKET.IO Listener
   useEffect(() => {
-    const socket = io("http://localhost:4000");
+    if (!socket) return;
 
-    socket.on("connect", () => {
-      console.log("✅ Connected to WebSocket server");
+    socket.on("post:new", (newPost: Post) => {
+      setPosts((prev) => [newPost, ...prev]);
     });
 
-    socket.on("post:new", (newPost) => {
-      console.log("🔥 Post baru diterima:", newPost);
-      setPosts((prev) => [newPost, ...prev]);
+    socket.on("post:update", (updatedPost: Post) => {
+      setPosts((prev) =>
+        prev.map((p) => (p.id === updatedPost.id ? updatedPost : p))
+      );
+    });
+
+    socket.on("post:delete", ({ id }: { id: number }) => {
+      setPosts((prev) => prev.filter((p) => p.id !== Number(id)));
     });
 
     return () => {
       socket.off("post:new");
-      socket.disconnect();
+      socket.off("post:update");
+      socket.off("post:delete");
     };
-  }, []);
+  }, [socket]);
+
+  // Handler Pencarian
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) return;
+
+    try {
+      setIsSearching(true);
+      const res = await fetch(
+        `http://localhost:4000/api/posts/search?q=${encodeURIComponent(
+          searchQuery
+        )}`
+      );
+      const data = await res.json();
+      setPosts(data);
+    } catch (err) {
+      console.error("❌ Gagal melakukan pencarian:", err);
+      alert("Gagal melakukan pencarian. Cek console.");
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const resetSearch = () => {
+    setSearchQuery("");
+    if (isFeedMode) {
+      refetchFeed();
+    } else if (postsData?.getAllPosts) {
+      setPosts(postsData.getAllPosts);
+    }
+  };
 
   // Effect untuk Hydration, Ambil Nama User, dan Listener Global
   useEffect(() => {
@@ -426,6 +470,31 @@ function Dashboard() {
               )}
             </div>
 
+            {/* Search */}
+            <div className="relative flex">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Cari post..."
+                className="px-4 py-2 rounded-l-lg border border-gray-700 bg-gray-800 text-white focus:outline-none w-64"
+              />
+              <button
+                onClick={handleSearch}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-r-lg hover:bg-indigo-700 transition"
+              >
+                🔍
+              </button>
+              {searchQuery && (
+                <button
+                  onClick={resetSearch}
+                  className="absolute right-10 top-0 mt-2 text-gray-400 hover:text-white"
+                >
+                  ✖
+                </button>
+              )}
+            </div>
+
             <div className="relative">
               <button
                 onClick={() => setIsFilterOpen(true)}
@@ -582,62 +651,133 @@ function Dashboard() {
             </div>
           ) : (
             <div className="grid gap-8 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {posts.map((post) => (
-                <div
-                  key={post.id}
-                  onClick={() => router.push(`/post/${post.id}`)}
-                  className="bg-gray-800 p-6 border border-gray-700 rounded-xl shadow-2xl hover:shadow-indigo-500/30 transition duration-300 transform hover:-translate-y-1 cursor-pointer flex flex-col justify-between"
-                >
-                  <div>
-                    <h4 className="text-xl font-semibold text-white mb-3 border-l-4 border-indigo-500 pl-3">
-                      {post.title}
-                    </h4>
-                    <p className="text-gray-400 text-sm mb-4 line-clamp-3">
-                      {post.content.substring(0, 150)}
-                      {post.content.length > 150 ? "..." : ""}
-                    </p>
+              {posts.map((post) => {
+                // Ambil userId yang sedang login
+                const profile = JSON.parse(
+                  localStorage.getItem("userProfile") || "{}"
+                );
+                const currentUserId = profile?.id;
 
-                    {/* Tanggal postingan */}
-                    <p className="text-xs text-gray-500 mb-3">
-                      Diposting pada{" "}
-                      <span className="text-gray-400 font-medium">
-                        {post.createdAt
-                          ? new Date(post.createdAt).toLocaleDateString(
-                              "id-ID",
-                              {
-                                day: "2-digit",
-                                month: "long",
-                                year: "numeric",
-                              }
-                            )
-                          : "-"}
-                      </span>
-                    </p>
-                  </div>
+                const isOwner = post.author.id === currentUserId;
 
-                  <div>
-                    <p className="text-xs text-gray-500 mb-3 pt-3 border-t border-gray-700">
-                      <span className="font-medium text-gray-400">
-                        Penulis:
-                      </span>{" "}
-                      {post.author.firstName} {post.author.lastName}
-                    </p>
+                return (
+                  <div
+                    key={post.id}
+                    className="bg-gray-800 p-6 border border-gray-700 rounded-xl shadow-2xl hover:shadow-indigo-500/30 transition duration-300 transform hover:-translate-y-1 flex flex-col justify-between"
+                  >
+                    <div
+                      onClick={() => router.push(`/post/${post.id}`)}
+                      className="cursor-pointer"
+                    >
+                      <h4 className="text-xl font-semibold text-white mb-3 border-l-4 border-indigo-500 pl-3">
+                        {post.title}
+                      </h4>
+                      <p className="text-gray-400 text-sm mb-4 line-clamp-3">
+                        {post.content.substring(0, 150)}
+                        {post.content.length > 150 ? "..." : ""}
+                      </p>
 
-                    {/* Tags Container */}
-                    <div className="flex flex-wrap gap-2 text-xs">
-                      <strong className="text-gray-500">Tags:</strong>
-                      {post.tags.map((tag: { id: string; name: string }) => (
-                        <span
-                          key={tag.id}
-                          className="px-3 py-1 bg-indigo-900/50 text-indigo-300 font-medium rounded-full border border-indigo-800"
-                        >
-                          {tag.name}
+                      {/* Tanggal postingan */}
+                      <p className="text-xs text-gray-500 mb-3">
+                        Diposting pada{" "}
+                        <span className="text-gray-400 font-medium">
+                          {post.createdAt
+                            ? new Date(post.createdAt).toLocaleDateString(
+                                "id-ID",
+                                {
+                                  day: "2-digit",
+                                  month: "long",
+                                  year: "numeric",
+                                }
+                              )
+                            : "-"}
                         </span>
-                      ))}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs text-gray-500 mb-3 pt-3 border-t border-gray-700">
+                        <span className="font-medium text-gray-400">
+                          Penulis:
+                        </span>{" "}
+                        {post.author.firstName} {post.author.lastName}
+                      </p>
+
+                      {/* Tags Container */}
+                      <div className="flex flex-wrap gap-2 text-xs mb-3">
+                        <strong className="text-gray-500">Tags:</strong>
+                        {/* {post.tags.map((tag: { id: string; name: string }) => (
+                          <span
+                            key={tag.id}
+                            className="px-3 py-1 bg-indigo-900/50 text-indigo-300 font-medium rounded-full border border-indigo-800"
+                          >
+                            {tag.name}
+                          </span>
+                        ))} */}
+                        {(post.tags || []).map(
+                          (tag: { id: string; name: string }) => (
+                            <span
+                              key={tag.id}
+                              className="px-3 py-1 bg-indigo-900/50 text-indigo-300 font-medium rounded-full border border-indigo-800"
+                            >
+                              {tag.name}
+                            </span>
+                          )
+                        )}
+                      </div>
+
+                      {/* Tombol Edit & Hapus (khusus pembuat postingan) */}
+                      {isOwner && (
+                        <div className="flex justify-end gap-3 pt-3 border-t border-gray-700">
+                          {/* Tombol Edit */}
+                          <button
+                            onClick={() => router.push(`/edit-post/${post.id}`)}
+                            className="px-3 py-1 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-sm flex items-center gap-1 transition"
+                          >
+                            ✏️ Edit
+                          </button>
+
+                          {/* Tombol Delete */}
+                          <button
+                            onClick={async () => {
+                              const confirmDelete = confirm(
+                                "Yakin ingin menghapus postingan ini?"
+                              );
+                              if (!confirmDelete) return;
+
+                              try {
+                                const token = localStorage.getItem("authToken");
+                                await fetch(
+                                  `http://localhost:4000/api/posts/${post.id}`,
+                                  {
+                                    method: "DELETE",
+                                    headers: {
+                                      Authorization: `Bearer ${token}`,
+                                    },
+                                  }
+                                );
+
+                                // Hapus dari state langsung
+                                setPosts((prev) =>
+                                  prev.filter((p) => p.id !== post.id)
+                                );
+
+                                alert("✅ Postingan berhasil dihapus!");
+                              } catch (err) {
+                                console.error(err);
+                                alert("❌ Gagal menghapus postingan.");
+                              }
+                            }}
+                            className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm flex items-center gap-1 transition"
+                          >
+                            🗑️ Hapus
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>
