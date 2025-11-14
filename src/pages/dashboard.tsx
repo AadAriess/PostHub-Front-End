@@ -1,5 +1,5 @@
 import { gql } from "@apollo/client";
-import { useQuery, useLazyQuery } from "@apollo/client/react";
+import { useQuery, useLazyQuery, useMutation } from "@apollo/client/react";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import withAuth from "../components/withAuth";
@@ -10,6 +10,7 @@ import { FilterGroup } from "../types/filter";
 import { GetNotificationsResponse, Notification } from "../types/notifications";
 import { useSocket } from "../context/socketContext";
 import { Post } from "../types/post";
+import PresetListModal from "../components/PresetListModal";
 
 // GraphQL Query untuk feed
 const GET_FEED_QUERY = gql`
@@ -95,6 +96,17 @@ const GET_NOTIFICATIONS_QUERY = gql`
   }
 `;
 
+// GraphQL Mutation untuk menyimpan preset filter
+const SAVE_FILTER_PRESET = gql`
+  mutation SaveFilterPreset($name: String!, $filters: JSONObject!) {
+    saveFilterPreset(name: $name, filters: $filters) {
+      id
+      name
+      createdAt
+    }
+  }
+`;
+
 // Helper untuk membuat pesan notifikasi yang lebih mudah dibaca
 const formatNotificationMessage = (notif: Notification): string => {
   switch (notif.type) {
@@ -123,6 +135,9 @@ function Dashboard() {
     conditions: [],
     groups: [],
   });
+  const [isPresetModalOpen, setIsPresetModalOpen] = useState(false);
+  const [isSavePresetModalOpen, setIsSavePresetModalOpen] = useState(false);
+  const [presetName, setPresetName] = useState("");
   const [isFeedMode, setIsFeedMode] = useState(false);
 
   // Search state
@@ -138,6 +153,8 @@ function Dashboard() {
     skip: !isClient,
     fetchPolicy: "network-only",
   });
+
+  const [savePreset] = useMutation(SAVE_FILTER_PRESET);
 
   // Hook Data Fetching Apollo untuk Feed
   const {
@@ -247,6 +264,13 @@ function Dashboard() {
     }
   };
 
+  const handlePresetSelect = (presetFilters: FilterGroup) => {
+    console.log("🎯 Diterima dari modal:", presetFilters);
+    setFilters(presetFilters); // simpan filter yang baru
+    setIsPresetModalOpen(false); // tutup modal
+    applyFilter(presetFilters); // jalankan filter langsung
+  };
+
   const resetSearch = () => {
     setSearchQuery("");
     if (isFeedMode) {
@@ -288,13 +312,18 @@ function Dashboard() {
   }, []);
 
   // Handler untuk menerapkan filter
-  const applyFilter = async () => {
+  const applyFilter = async (customFilters?: any) => {
     try {
-      console.log("📤 Mengirim filter:", JSON.stringify(filters, null, 2));
+      const activeFilters = customFilters || filters;
+
+      console.log(
+        "📤 Mengirim filter:",
+        JSON.stringify(activeFilters, null, 2)
+      );
 
       await runFilterPosts({
         variables: {
-          filters,
+          filters: activeFilters,
         },
       });
 
@@ -321,6 +350,19 @@ function Dashboard() {
       }
     } catch (err) {
       console.error("❌ Gagal reset filter:", err);
+    }
+  };
+
+  // Handler Simpan Preset Filter
+  const handleSaveFilterPreset = async () => {
+    try {
+      await savePreset({ variables: { name: presetName, filters } });
+      alert("✅ Preset filter berhasil disimpan!");
+      setIsSavePresetModalOpen(false);
+      setPresetName("");
+    } catch (err) {
+      console.error(err);
+      alert("❌ Gagal menyimpan preset filter.");
     }
   };
 
@@ -502,6 +544,12 @@ function Dashboard() {
               >
                 Filter
               </button>
+              <button
+                onClick={() => setIsPresetModalOpen(true)}
+                className="bg-gray-700 px-4 py-2 rounded-lg hover:bg-gray-600 text-gray-100"
+              >
+                Preset Filter
+              </button>
 
               {/* Modal Filter */}
               {isFilterOpen && (
@@ -527,7 +575,13 @@ function Dashboard() {
                         Reset
                       </button>
                       <button
-                        onClick={applyFilter}
+                        onClick={() => setIsSavePresetModalOpen(true)}
+                        className="px-4 py-2 bg-green-600 rounded hover:bg-green-700 text-white"
+                      >
+                        Simpan Preset
+                      </button>
+                      <button
+                        onClick={() => applyFilter()}
                         className="px-4 py-2 bg-indigo-600 rounded text-white hover:bg-indigo-700"
                       >
                         Terapkan Filter
@@ -535,6 +589,47 @@ function Dashboard() {
                     </div>
                   </div>
                 </div>
+              )}
+
+              {/* Modal Simpan Preset */}
+              {isSavePresetModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
+                  <div className="bg-gray-900 p-6 rounded-lg w-[400px]">
+                    <h2 className="text-xl font-semibold text-white mb-4">
+                      Simpan Filter sebagai Preset
+                    </h2>
+                    <input
+                      type="text"
+                      value={presetName}
+                      onChange={(e) => setPresetName(e.target.value)}
+                      placeholder="Nama preset..."
+                      className="w-full p-2 rounded bg-gray-800 border border-gray-700 text-white mb-4"
+                    />
+                    <div className="flex justify-end gap-3">
+                      <button
+                        onClick={() => setIsSavePresetModalOpen(false)}
+                        className="px-4 py-2 bg-gray-700 rounded hover:bg-gray-600"
+                      >
+                        Batal
+                      </button>
+                      <button
+                        onClick={handleSaveFilterPreset}
+                        disabled={!presetName.trim()}
+                        className="px-4 py-2 bg-green-600 rounded text-white hover:bg-green-700 disabled:opacity-50"
+                      >
+                        Simpan
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Modal Preset Saya */}
+              {isPresetModalOpen && (
+                <PresetListModal
+                  onSelect={handlePresetSelect}
+                  onClose={() => setIsPresetModalOpen(false)}
+                />
               )}
             </div>
 

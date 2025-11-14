@@ -13,3 +13,14 @@ export interface FilterGroup {
   conditions: FilterRule[];
   groups?: FilterGroup[];
 }
+
+export interface FilterPreset {
+  id: number;
+  name: string;
+  filters: any;
+  createdAt: string;
+}
+
+export interface GetMyPresetsData {
+  myFilterPresets: FilterPreset[];
+}
